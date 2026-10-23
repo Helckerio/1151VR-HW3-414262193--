@@ -1,51 +1,93 @@
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 public class RouletteController : MonoBehaviour
 {
+    [Header("把 .mp3 或 .wav 音檔直接拖進下面這個格子！")]
+    public AudioClip soundFile;
+
     public float maxSpeed = 800f;
-    public float acceleration = 400f;
+    public float acceleration = 500f;
     public float deceleration = 200f;
+
     private float currentSpeed = 0f;
-    private int state = 0; // 0: 停止, 1: 加速, 2: 減速
+    private int state = 0; // 0: 停止, 1: 自動加速中, 2: 自動減速中
     private AudioSource audioSource;
 
     void Start()
     {
         audioSource = GetComponent<AudioSource>();
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+        }
+        audioSource.playOnAwake = false;
+        audioSource.loop = true;
     }
 
     void Update()
     {
-        // 按下空白鍵開始加速
-        if (Input.GetKeyDown(KeyCode.Space) && state == 0)
+        bool isTriggered = false;
+
+        // 同時支援：電腦空白鍵、滑鼠左鍵、以及「手機螢幕手指觸控」！
+#if ENABLE_INPUT_SYSTEM
+        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+        {
+            isTriggered = true;
+        }
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            isTriggered = true;
+        }
+        if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
+        {
+            isTriggered = true;
+        }
+#else
+        if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0))
+        {
+            isTriggered = true;
+        }
+        if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
+        {
+            isTriggered = true;
+        }
+#endif
+
+        // 當觸發時，開始加速並播放音效
+        if (isTriggered && state == 0)
         {
             state = 1;
-            if (audioSource != null && !audioSource.isPlaying)
+            if (soundFile != null)
+            {
+                audioSource.clip = soundFile;
+                audioSource.Play();
+            }
+            else if (audioSource != null)
             {
                 audioSource.Play();
             }
         }
-        // 放開空白鍵開始減速
-        else if (Input.GetKeyUp(KeyCode.Space) && state == 1)
-        {
-            state = 2;
-        }
 
-        // 狀態速度計算
+        // 狀態 1：自動加速到最高速
         if (state == 1)
         {
             currentSpeed += acceleration * Time.deltaTime;
-            if (currentSpeed > maxSpeed)
+            if (currentSpeed >= maxSpeed)
             {
                 currentSpeed = maxSpeed;
+                state = 2; // 加速到頂後，自動進入減速狀態
             }
         }
+        // 狀態 2：自動減速直到完全停止
         else if (state == 2)
         {
             currentSpeed -= deceleration * Time.deltaTime;
-            if (currentSpeed <= 0)
+            if (currentSpeed <= 0f)
             {
-                currentSpeed = 0;
+                currentSpeed = 0f;
                 state = 0; // 完全停止
                 if (audioSource != null && audioSource.isPlaying)
                 {
@@ -55,6 +97,6 @@ public class RouletteController : MonoBehaviour
         }
 
         // 執行旋轉 (Z軸)
-        transform.Rotate(0, 0, -currentSpeed * Time.deltaTime);
+        transform.Rotate(0f, 0f, -currentSpeed * Time.deltaTime);
     }
 }
